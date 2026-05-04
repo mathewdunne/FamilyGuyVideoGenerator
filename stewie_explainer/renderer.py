@@ -146,7 +146,7 @@ def _character_clip(
     if not image_path.exists():
         return None
 
-    target_height = _character_height(frame_height)
+    target_height = _character_height(frame_height, turn.speaker)
     character = (
         image_clip_factory(str(image_path))
         .with_start(start_time)
@@ -156,13 +156,15 @@ def _character_clip(
 
     # Keep speakers anchored to opposite sides while leaving room for centered subtitles.
     margin = max(36, int(frame_width * 0.04))
-    x = margin if turn.speaker == "peter" else max(margin, frame_width - character.w - margin)
+    x = max(margin, frame_width - character.w - margin) if turn.speaker == "peter" else margin
     y = max(0, frame_height - character.h - max(18, int(frame_height * 0.04)))
     return character.with_position((x, y))
 
 
-def _character_height(frame_height: int) -> int:
-    return min(540, max(280, int(frame_height * 0.55)))
+def _character_height(frame_height: int, speaker: str) -> int:
+    if speaker == "stewie":
+        return min(576, max(300, int(frame_height * 0.56)))
+    return min(648, max(336, int(frame_height * 0.66)))
 
 
 def _word_by_word_subtitles(

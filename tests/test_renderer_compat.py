@@ -1,6 +1,8 @@
 import sys
 import types
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from stewie_explainer.models import DialogueTurn, ExplainerScript, WordTiming
@@ -105,6 +107,57 @@ class RendererCompatTests(unittest.TestCase):
     def test_audio_timeline_rejects_missing_audio(self) -> None:
         with self.assertRaisesRegex(ValueError, "Missing audio"):
             renderer._audio_timeline(make_script_with_missing_audio(), object)
+
+    def test_character_positions_put_stewie_left_and_peter_right(self) -> None:
+        class FakeCharacterClip:
+            def __init__(self, image_path):
+                self.image_path = str(image_path)
+                self.base_w, self.base_h = (414, 602) if "peter" in self.image_path else (781, 987)
+
+            def with_start(self, start):
+                self.start = start
+                return self
+
+            def with_duration(self, duration):
+                self.duration = duration
+                return self
+
+            def resized(self, height):
+                self.h = height
+                self.w = int(self.base_w * (height / self.base_h))
+                return self
+
+            def with_position(self, position):
+                self.position = position
+                return self
+
+        with TemporaryDirectory() as tmp:
+            assets_dir = Path(tmp)
+            (assets_dir / "peter.png").touch()
+            (assets_dir / "stewie.png").touch()
+
+            peter = renderer._character_clip(
+                DialogueTurn("peter", "Answer"),
+                0,
+                1,
+                assets_dir,
+                1080,
+                1920,
+                FakeCharacterClip,
+            )
+            stewie = renderer._character_clip(
+                DialogueTurn("stewie", "Question"),
+                0,
+                1,
+                assets_dir,
+                1080,
+                1920,
+                FakeCharacterClip,
+            )
+
+        self.assertEqual(stewie.position[0], 43)
+        self.assertGreater(peter.position[0], 1080 // 2)
+        self.assertLess(stewie.h, peter.h)
 
 
 if __name__ == "__main__":
