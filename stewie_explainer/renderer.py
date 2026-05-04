@@ -197,19 +197,19 @@ def _word_by_word_subtitles(
 
 
 def _subtitle_font_size(frame_width: int, frame_height: int, word: str) -> int:
-    base_size = min(104, max(54, int(frame_height * 0.11)))
+    base_size = min(126, max(62, int(frame_height * 0.13)))
     max_word_width = frame_width * 0.82
     estimated_width = max(len(word), 1) * base_size * 0.68
     if estimated_width <= max_word_width:
         return base_size
-    return max(42, int(base_size * (max_word_width / estimated_width)))
+    return max(48, int(base_size * (max_word_width / estimated_width)))
 
 
 def _subtitle_image(word: str, font_size: int):
     from PIL import Image, ImageDraw, ImageFont
     import numpy as np
 
-    font = ImageFont.load_default(size=font_size)
+    font = _subtitle_font(font_size)
     stroke_width = max(5, int(font_size * 0.06))
     padding_x = max(28, int(font_size * 0.28))
     padding_y = max(22, int(font_size * 0.32))
@@ -236,6 +236,22 @@ def _subtitle_image(word: str, font_size: int):
         stroke_width=stroke_width,
     )
     return np.array(image)
+
+
+def _subtitle_font(font_size: int):
+    from pathlib import Path
+    from PIL import ImageFont
+
+    font_candidates = [
+        Path("C:/Windows/Fonts/ARLRDBD.TTF"),
+        Path("C:/Windows/Fonts/comicbd.ttf"),
+        Path("C:/Windows/Fonts/comic.ttf"),
+        Path("C:/Windows/Fonts/arialbd.ttf"),
+    ]
+    for font_path in font_candidates:
+        if font_path.exists():
+            return ImageFont.truetype(str(font_path), font_size)
+    return ImageFont.load_default(size=font_size)
 
 
 def _close_clip(clip) -> None:
