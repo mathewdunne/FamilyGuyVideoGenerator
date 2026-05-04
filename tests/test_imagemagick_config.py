@@ -1,33 +1,15 @@
-import os
+import importlib.util
 import unittest
-from unittest.mock import patch
 
-from stewie_explainer.renderer import _safe_convert_binary, configure_imagemagick_for_moviepy
+from stewie_explainer import renderer
 
 
-class ImageMagickConfigTests(unittest.TestCase):
-    @patch.dict(os.environ, {"IMAGEMAGICK_BINARY": "C:\\ImageMagick\\magick.exe"})
-    @patch("stewie_explainer.renderer._apply_moviepy_settings")
-    def test_env_binary_wins(self, apply_settings) -> None:
-        binary = configure_imagemagick_for_moviepy()
+class MoviePy2ConfigTests(unittest.TestCase):
+    def test_moviepy_editor_import_path_is_not_used(self) -> None:
+        self.assertIsNone(importlib.util.find_spec("moviepy.editor"))
 
-        self.assertEqual(binary, "C:\\ImageMagick\\magick.exe")
-        apply_settings.assert_called_once_with({"IMAGEMAGICK_BINARY": "C:\\ImageMagick\\magick.exe"})
-
-    @patch.dict(os.environ, {}, clear=True)
-    @patch("stewie_explainer.renderer.shutil.which")
-    @patch("stewie_explainer.renderer._apply_moviepy_settings")
-    def test_finds_magick_on_path(self, apply_settings, which) -> None:
-        which.side_effect = lambda name: "C:\\Tools\\magick.exe" if name == "magick" else None
-
-        binary = configure_imagemagick_for_moviepy()
-
-        self.assertEqual(binary, "C:\\Tools\\magick.exe")
-        apply_settings.assert_called_once_with({"IMAGEMAGICK_BINARY": "C:\\Tools\\magick.exe"})
-
-    @patch("stewie_explainer.renderer.shutil.which", return_value="C:\\Windows\\System32\\convert.exe")
-    def test_safe_convert_ignores_windows_system_convert(self, _which) -> None:
-        self.assertIsNone(_safe_convert_binary())
+    def test_imagemagick_configuration_was_removed(self) -> None:
+        self.assertFalse(hasattr(renderer, "configure_imagemagick_for_moviepy"))
 
 
 if __name__ == "__main__":
