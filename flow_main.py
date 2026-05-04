@@ -1,91 +1,134 @@
-import os
-import logging
-from db_handler import DBOperation
-from telegram_handler import TelegramBot
-from scrap_audio import VoiceGenerator
-from editor_agent import DynamicVideoEditor
-from utils import Utils
-import  time 
-#changes in editor  , in flow, in telegram file 
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+from stewie_explainer.backgrounds import DEFAULT_BACKGROUNDS_DIR, resolve_background
+from stewie_explainer.pipeline import run_generation, run_render_only
+from stewie_explainer.renderer import MoviePyReelRenderer
+from stewie_explainer.transcript import ClaudeCliTranscriptGenerator
+from stewie_explainer.tts import create_tts_provider
 
 
-def run_flow():
-    # Setup logging
-    os.makedirs("runtime_logs", exist_ok=True)
-    logging.basicConfig(
-        filename="runtime_logs/flow_log.log",
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s"
+def load_dotenv_if_available() -> None:
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    load_dotenv()
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Generate a funny Peter/Stewie FRC or coding explainer reel."
     )
+    parser.add_argument("--prompt", default="", help="Topic or instructions for the explainer.")
+    parser.add_argument("--url", default=None, help="Optional article URL to use as source context.")
+    parser.add_argument(
+        "--render-only",
+        type=Path,
+        default=None,
+        help="Resume an existing run folder and rerun only the video render step.",
+    )
+    parser.add_argument(
+        "--background",
+        type=Path,
+        default=None,
+        help=(
+            "Background gameplay/reel video to render behind the characters. "
+            "Defaults to a random video from video_assets/backgrounds/."
+        ),
+    )
+    parser.add_argument(
+        "--backgrounds-dir",
+        default=DEFAULT_BACKGROUNDS_DIR,
+        type=Path,
+        help="Directory to search for a random background when --background is not set.",
+    )
+    parser.add_argument(
+        "--out",
+        default=Path("outputs"),
+        type=Path,
+        help="Directory where the run folder and artifacts should be written.",
+    )
+    parser.add_argument(
+        "--tts",
+        default="fish_audio",
+        help="TTS provider to use. Currently supported: fish_audio.",
+    )
+    parser.add_argument(
+        "--claude-model",
+        default="haiku",
+        help="Claude CLI model alias/name for script generation.",
+    )
+    parser.add_argument(
+        "--assets-dir",
+        default=Path("image_assests"),
+        type=Path,
+        help="Directory containing peter.png and stewie.png.",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Show full Python tracebacks instead of concise errors.",
+    )
+    return parser
 
-    bot = TelegramBot()
-    db = DBOperation()
 
-    logging.info("Fetching stage and unprocessed dialogues...")
-    stage_data = db.get_stage_and_unprocessed_dialogues()
-    current_stage = stage_data.get("stage")
+def main() -> int:
+    load_dotenv_if_available()
+    args = build_parser().parse_args()
 
-    if current_stage == 0:
-        logging.info("Stage 0: Table is empty. Polling Telegram for new content.")
-        try:
-            content = bot.poll_for_content()
-            db.add_dialogues(content)
-            logging.info("New dialogues added to the database.")
-        except Exception as e:
-            logging.error(f"Error polling or adding dialogues: {e}")
+    def status(message: str) -> None:
+        print(f"[status] {message}", flush=True)
 
-    elif current_stage == 1:
-        bot.send_message("Current stage is 1, collecting the audio")
-        voice_generator = VoiceGenerator()
-        logging.info("Stage 1: Starting audio processing phase...")
-        sentences = stage_data.get("dialogues")
+    try:
+        status("Resolving background video")
+        background_path = resolve_background(args.background, args.backgrounds_dir)
+        status(f"Using background: {background_path}")
 
-        for cur in sentences:
-            dialogue_id = cur.get("id")
-            dialogue_line = cur.get("sentence")
+        renderer = MoviePyReelRenderer(assets_dir=args.assets_dir)
+        if args.render_only is not None:
+            result = run_render_only(
+                run_dir=args.render_only,
+                background_path=background_path,
+                renderer=renderer,
+                status=status,
+            )
+            print(f"Created video: {result.video_path}")
+            print(f"Run folder: {result.run_dir}")
+            print(f"Manifest: {result.manifest_path}")
+            return 0
 
-            try:
-                logging.info(f"Processing dialogue ID {dialogue_id}: {dialogue_line}")
-                success_flag = voice_generator.process_conversation(dialogue_line, dialogue_id)
-                db.mark_processed(dialogue_id, success_flag)
-                logging.info(f"Marked dialogue ID {dialogue_id} as processed: {success_flag}")
-            except Exception as e:
-                logging.error(f"Error processing dialogue ID {dialogue_id}: {e}")
-                db.mark_processed(dialogue_id, False)
+        status(f"Using output directory: {args.out}")
+        transcript_generator = ClaudeCliTranscriptGenerator(model=args.claude_model)
+        status(f"Using Claude model: {args.claude_model}")
 
-        bot.send_message("Collection of audio ended, shutting down the VM")
+        status(f"Configuring TTS provider: {args.tts}")
+        tts_provider = create_tts_provider(args.tts)
 
-    elif current_stage == 2:
-        logging.info("Stage 2: Starting video editing...")
-        bot.send_message("Ready to edit the video")
-        assets = db.get_raedy_assests()
-        editor = DynamicVideoEditor(
-            video_path=r"/home/ubuntu/mainrepo/stewie_v1/video_assests/video_without_audio.webm", 
-            output_path="output_final_video.mp4",
-            dialogue_data=assets,
-          
+        result = run_generation(
+            prompt=args.prompt,
+            url=args.url,
+            background_path=background_path,
+            out_dir=args.out,
+            transcript_generator=transcript_generator,
+            tts_provider=tts_provider,
+            renderer=renderer,
+            status=status,
         )
-        editor.edit()
-        logging.info("Video editing completed.")
-        db.truncate_dialouge_stage()
-        Utils.archive_audio_assets()
-        try:
-            bot.send_message("editimg completed sending you video")
-            bot.send_video_file("")
-        except Exception as e:
-            logging.error(f"Error  while sending the video: {e}")
+    except Exception as exc:
+        if args.debug:
+            raise
+        print(f"[error] {exc}", file=sys.stderr, flush=True)
+        return 1
 
-    else:
-        logging.warning(f"Unexpected stage value: {current_stage}")
+    print(f"Created video: {result.video_path}")
+    print(f"Run folder: {result.run_dir}")
+    print(f"Manifest: {result.manifest_path}")
+    return 0
+
 
 if __name__ == "__main__":
-    try:
-        run_flow()
-    except Exception as e:
-        logging.critical(f"Critical failure in main workflow: {e}")
-    finally:
-        time.sleep(60*3)
-        print("shutting down the vm")
-        #pass
-        #here  shutdwon the  machine  
-        Utils.stop_vm()  
+    raise SystemExit(main())

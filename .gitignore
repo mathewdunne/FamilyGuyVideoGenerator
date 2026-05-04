@@ -7,6 +7,17 @@ __pycache__/
 # Ignore environment files
 .env
 
+# Ignore generated local run artifacts
+outputs/
+runtime/
+runtime_logs/
+audio_assests/
+downloaded_images/
+archives_audios/
 
-# venv/
-# env/
+.venv/
+env/
+
+# Keep the backgrounds folder, not local video files
+video_assets/backgrounds/*
+!video_assets/backgrounds/.gitkeep

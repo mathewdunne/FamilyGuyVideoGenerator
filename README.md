@@ -1,135 +1,105 @@
-# Stewie_it v1
+# FRC Explainer Video Generator
 
-## 🎥 **DEMO AUTO GENERATED VIDEO — [WATCH ON INSTAGRAM](https://www.instagram.com/stewie_codes_absurd/)**
+Generate short Peter/Stewie-style explainer reels for FRC and coding topics.
 
-**Stewie_it v1** is an experimental automation project inspired by a viral Instagram trend where Stewie and Peter Griffin humorously explain coding topics over gameplay footage (recent trend)
+The local workflow is:
 
-This project automates assembling these videos by combining user-provided scripts, AI-scraped voices, character images, and gameplay background, then sending them to user.
+1. Run the CLI with a topic prompt and, optionally, an article URL.
+2. Claude CLI generates a structured 40-60 second dialogue script.
+3. Fish Audio generates one MP3 per dialogue turn.
+4. MoviePy assembles the background video, character images, audio, and word-by-word captions.
+5. The final MP4 and review artifacts are saved together in one output folder.
 
-> ⚠️ This is an experimental project, created for fun and educational purposes. It uses tricks like scraping voices and rotating IPs via AWS EC2.
----
+## Requirements
 
-## 🎥 Example Video Format
+- Python 3.11+
+- Claude CLI
+- FFmpeg on PATH
+- ImageMagick usable by MoviePy `TextClip`
+- Fish Audio API key and voice IDs
 
-| ![Stewie](image_assests/stewie.png) | ![Peter](image_assests/peter.png) |
-|:----------------------------------------:|:-------------------------------------:|
-| **Stewie** explains a coding concept with AI voiceover | **Peter** reacts or adds commentary with AI voiceover |
-| Meanwhile, gameplay footage plays in the background |
+Install Python dependencies:
 
----
+```powershell
+python -m pip install -r requirements.txt
+```
 
-## 🧠 How It Works
+## Configuration
 
+Copy `.env.template` to `.env` and fill in your Fish Audio values:
 
-## Architecture
+```text
+FISH_AUDIO_API_KEY=your_key_here
+FISH_AUDIO_PETER_VOICE_ID=your_peter_voice_id
+FISH_AUDIO_STEWIE_VOICE_ID=your_stewie_voice_id
+FISH_AUDIO_MODEL=s2-pro
+```
 
-![Architecture Diagram](image_assests/aws_diagram.jpg)
+`FISH_API_KEY` is also accepted as an alias for `FISH_AUDIO_API_KEY`.
 
-### 1. Script Input via Telegram  
-- The user sends a coding topic or full dialogue script to the Telegram bot.  
-- The bot expects a back-and-forth conversation format alternating between Stewie and Peter lines.  
-- Users can optionally generate or fetch scripts using ChatGPT externally and paste them in.
+If MoviePy cannot find ImageMagick on Windows, set this too:
 
-### 🧠 Telegram Interface
+```text
+IMAGEMAGICK_BINARY=C:\Program Files\ImageMagick-7.1.2-Q16-HDRI\magick.exe
+```
 
-Here’s how you interact with the bot via Telegram:
+Usually this is not needed if `magick -version` works in the same terminal.
 
-| ![Telegram Screen 1](image_assests/telegram_screenshot2.png) | ![Telegram Screen 2](image_assests/telegram_screenshot1.png) |
-|:--------------------------------------------------------:|:--------------------------------------------------------:|
-| Telegram: Send content or prompts                        | Telegram: Get auto-generated video file                  |
+## Usage
 
+```powershell
+python flow_main.py `
+  --prompt "Explain PID control for an FRC swerve module" `
+  --url "https://example.com/optional-source-article" `
+  --out outputs
+```
 
-### 2. Voice Generation  
-- Voices are scraped from [Parrot AI](https://parrot.ai/) by spinning up an AWS EC2 instance that:  
-  - Launches, scrapes voice clips for the dialogue, then shuts down automatically.  
-- AWS **CloudWatch Events + Lambda** handle EC2 lifecycle management to rotate IP addresses and avoid bans.
+`--out` defaults to `outputs`, so it can be omitted. If `--background` is omitted, the CLI picks a random video from `video_assets/backgrounds/`.
 
-### 3. Image & Asset Collection  
-- Character images (`stewie.png`, `peter.png`) are stored locally.  
-- Gameplay footage videos are pre-stored, you can add any footage in reel size video in video assests folder 
-- DuckDuckGo scraping is used to find additional relevant images if needed.
+You can still override the background explicitly:
 
-### 4. Video Assembly  
-- Using Python’s `moviepy`, the audio clips, character images, and gameplay footage are synchronized and combined into the final video.  
-- Each dialogue line is paired with the corresponding character’s image and AI voice clip.
+```powershell
+python flow_main.py `
+  --prompt "Explain PID control for an FRC swerve module" `
+  --background "path\to\vertical_gameplay.mp4"
+```
 
-### 5. Telegram Monitoring  
-- The Telegram bot notifies users about job status, errors, or when the video is ready.  
-- Users can send new scripts or topics directly to the bot.
+To debug rendering without spending more TTS credits, resume from an existing run folder:
 
-### 6. Telegram Delivery  
-- When the video is ready, it is **sent directly back to the Telegram user**.
-- You always receive your video, even if posting fails.
+```powershell
+python flow_main.py `
+  --render-only outputs\swerve_drive_pid
+```
 
-### 7. (Optional) Instagram Auto-Posting  
-- Auto-posting is available via **Instagram Graph API**.
-- Since IP address changes with EC2, this is best handled via a **cron job** if a valid session/IP is known.
-- You can also manually post using the Telegram-delivered video.
-## ⚙️ Requirements
+This reloads the saved `*_script.json` and `audio/*.mp3`, then reruns only the MoviePy render step.
 
-- Python 3.9+
-- AWS account with:
-  - EC2 instance for voice scraping
-  - CloudWatch + Lambda to manage EC2 lifecycle and IP rotation
-- Telegram Bot Token
-- OpenAI API key (optional, for manual ChatGPT use outside project)
+The output folder is named from the generated topic slug:
 
+```text
+outputs/
+  swerve_drive_pid/
+    audio/
+      01_peter.mp3
+      02_stewie.mp3
+    swerve_drive_pid_prompt.md
+    swerve_drive_pid_script.json
+    swerve_drive_pid_script.md
+    swerve_drive_pid_manifest.json
+    swerve_drive_pid.mp4
+```
 
+If a folder already exists, the CLI adds a suffix such as `_2`.
 
-## 📄 Sample Content Format
+## Notes
 
-Below is an example of how the script content is structured to generate the videos. The `audio` field paths are managed internally and are omitted here for privacy.
+- The old Telegram bot, SQLite staging database, AWS VM shutdown, and Parrot/Selenium scraping flow have been removed.
+- Fish Audio is the first TTS provider, but the code is organized so additional providers can be added behind the same interface.
+- Video Use is intentionally not part of the MVP render path. It is a better future fit for optional advanced finishing, overlays, or agentic editing passes.
 
-```json
-[
-  {
-    "audio": "[path to Peter's audio clip]",
-    "image": "peter.png",
-    "dialogue": "Peter: Hello Indian dev! You’ve seen reels like this, right?",
-    "character": "peter",
-    "image_search": "indian developer"
-  },
-  {
-    "audio": "[path to Stewie's audio clip]",
-    "image": "stewie.png",
-    "dialogue": "Stewie: Yeah! Those viral AI voice skits? Everyone’s reposting this one.",
-    "character": "stewie",
-    "image_search": "viral ai reel"
-  },
-  {
-    "audio": "[path to Peter's audio clip]",
-    "image": "peter.png",
-    "dialogue": "Peter: I built the automation for this. No paid AI, all open source!",
-    "character": "peter",
-    "image_search": "automation setup"
-  }
-]
+## Tests
 
+```powershell
+python -m unittest discover -s tests
+```
 
-## System Requirements
-
-Before running the script, make sure the following system-level dependencies are installed:
-
-### 🧰 Required Packages
-
-- **FFmpeg**: Required by `moviepy` and `pydub` for audio/video processing.
-- **ImageMagick**: Used for image manipulation and required for certain operations by `moviepy` or `imageio`.
-- **imageio**: Python library used for reading/writing images, often works with `moviepy`.
-
----
-
-### 📦 Install on Ubuntu/Debian
-
-```bash
-sudo apt update
-sudo apt install ffmpeg imagemagick
-pip install imageio
-
-
-
-## ⚙️ Setup & Running
-
-- The main automation service runs via `flow_main.py`.  
-- Run it as a background service or use process managers like `systemd`, `pm2`, or `screen`/`tmux` to keep it alive.  
-- This script keeps the Telegram bot live and handles the entire workflow end-to-end.
-
+The render smoke test skips automatically when the current terminal cannot see `ffmpeg`.
