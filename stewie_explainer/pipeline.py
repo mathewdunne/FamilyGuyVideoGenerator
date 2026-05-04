@@ -14,6 +14,7 @@ from .artifacts import (
 )
 from .models import ExplainerScript, script_from_dict
 from .renderer import VideoRenderer
+from .subtitles import SubtitleAligner, script_needs_subtitle_alignment, validate_subtitle_timings
 from .transcript import TranscriptGenerator
 from .tts import TTSProvider
 
@@ -33,6 +34,7 @@ def run_generation(
     out_dir: Path,
     transcript_generator: TranscriptGenerator,
     tts_provider: TTSProvider,
+    subtitle_aligner: SubtitleAligner,
     renderer: VideoRenderer,
     status: Callable[[str], None] | None = None,
 ) -> PipelineResult:
@@ -62,6 +64,11 @@ def run_generation(
     audio_paths = tts_provider.synthesize_script(script, run_dir / "audio", status=report)
     report("Writing script artifacts")
     script_json_path, script_md_path = write_script_files(run_dir, slug, script)
+    report("Aligning subtitle words with WhisperX")
+    subtitle_aligner.align_script(script, status=report)
+    validate_subtitle_timings(script)
+    report("Writing aligned script artifacts")
+    script_json_path, script_md_path = write_script_files(run_dir, slug, script)
 
     video_path = run_dir / f"{slug}.mp4"
     report(f"Rendering video with background: {background_path}")
@@ -82,6 +89,7 @@ def run_generation(
             "audio_files": [str(path) for path in audio_paths],
             "background_file": str(background_path),
             "tts_provider": tts_provider.__class__.__name__,
+            "subtitle_aligner": subtitle_aligner.__class__.__name__,
             "renderer": renderer.__class__.__name__,
             "source_article": None
             if article is None
@@ -99,6 +107,7 @@ def run_generation(
 def run_render_only(
     run_dir: Path,
     background_path: Path,
+    subtitle_aligner: SubtitleAligner,
     renderer: VideoRenderer,
     status: Callable[[str], None] | None = None,
 ) -> PipelineResult:
@@ -118,6 +127,13 @@ def run_render_only(
 
     report(f"Loaded script: {script.title} ({len(script.turns)} turns)")
     validate_audio_files(script)
+    if script_needs_subtitle_alignment(script):
+        report("Aligning subtitle words with WhisperX")
+        subtitle_aligner.align_script(script, status=report)
+        validate_subtitle_timings(script)
+        write_script_files(run_dir, slug, script)
+    else:
+        validate_subtitle_timings(script)
 
     video_path = run_dir / f"{slug}.mp4"
     report(f"Rendering video with background: {background_path}")
@@ -136,6 +152,7 @@ def run_render_only(
             "video_file": str(video_path),
             "audio_files": [str(turn.audio_path) for turn in script.turns if turn.audio_path],
             "background_file": str(background_path),
+            "subtitle_aligner": subtitle_aligner.__class__.__name__,
             "renderer": renderer.__class__.__name__,
             "resume_mode": "render_only",
         },

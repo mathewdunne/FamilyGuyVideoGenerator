@@ -7,6 +7,7 @@ from pathlib import Path
 from stewie_explainer.backgrounds import DEFAULT_BACKGROUNDS_DIR, resolve_background
 from stewie_explainer.pipeline import run_generation, run_render_only
 from stewie_explainer.renderer import MoviePyReelRenderer
+from stewie_explainer.subtitles import WhisperXSubtitleAligner
 from stewie_explainer.transcript import ClaudeCliTranscriptGenerator
 from stewie_explainer.tts import create_tts_provider
 
@@ -63,6 +64,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Claude CLI model alias/name for script generation.",
     )
     parser.add_argument(
+        "--whisperx-model",
+        default="base",
+        help=(
+            "Optional WhisperX alignment model override. "
+            "The default uses WhisperX's language-specific align model."
+        ),
+    )
+    parser.add_argument(
+        "--whisperx-device",
+        default="cpu",
+        help="Device for WhisperX subtitle alignment, such as cpu or cuda.",
+    )
+    parser.add_argument(
+        "--whisperx-compute-type",
+        default="int8",
+        help="Reserved for future WhisperX transcription use.",
+    )
+    parser.add_argument(
+        "--language",
+        default="en",
+        help="Language code for WhisperX subtitle alignment.",
+    )
+    parser.add_argument(
         "--assets-dir",
         default=Path("image_assests"),
         type=Path,
@@ -89,10 +113,21 @@ def main() -> int:
         status(f"Using background: {background_path}")
 
         renderer = MoviePyReelRenderer(assets_dir=args.assets_dir)
+        subtitle_aligner = WhisperXSubtitleAligner(
+            model_name=args.whisperx_model,
+            device=args.whisperx_device,
+            compute_type=args.whisperx_compute_type,
+            language=args.language,
+        )
+        status(
+            "Using WhisperX subtitle alignment: "
+            f"language={args.language}, device={args.whisperx_device}"
+        )
         if args.render_only is not None:
             result = run_render_only(
                 run_dir=args.render_only,
                 background_path=background_path,
+                subtitle_aligner=subtitle_aligner,
                 renderer=renderer,
                 status=status,
             )
@@ -115,6 +150,7 @@ def main() -> int:
             out_dir=args.out,
             transcript_generator=transcript_generator,
             tts_provider=tts_provider,
+            subtitle_aligner=subtitle_aligner,
             renderer=renderer,
             status=status,
         )

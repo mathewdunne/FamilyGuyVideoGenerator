@@ -11,11 +11,38 @@ SUPPORTED_SPEAKERS = {"peter", "stewie"}
 
 
 @dataclass
+class WordTiming:
+    word: str
+    start: float
+    end: float
+
+    def __post_init__(self) -> None:
+        self.word = self.word.strip()
+        self.start = float(self.start)
+        self.end = float(self.end)
+
+        if not self.word:
+            raise ValueError("Subtitle word cannot be empty")
+        if self.start < 0:
+            raise ValueError("Subtitle word start cannot be negative")
+        if self.end < self.start:
+            raise ValueError("Subtitle word end cannot be before start")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "word": self.word,
+            "start": self.start,
+            "end": self.end,
+        }
+
+
+@dataclass
 class DialogueTurn:
     speaker: str
     text: str
     image_search: str = ""
     audio_path: Path | None = None
+    word_timings: list[WordTiming] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.speaker = self.speaker.strip().lower()
@@ -39,6 +66,8 @@ class DialogueTurn:
         }
         if include_audio and self.audio_path is not None:
             data["audio"] = str(self.audio_path)
+        if self.word_timings:
+            data["word_timings"] = [word.to_dict() for word in self.word_timings]
         return data
 
 
@@ -87,6 +116,15 @@ def script_from_dict(data: dict[str, Any]) -> ExplainerScript:
                 text=str(item.get("text", "")),
                 image_search=str(item.get("image_search", "")),
                 audio_path=Path(str(item["audio"])) if item.get("audio") else None,
+                word_timings=[
+                    WordTiming(
+                        word=str(word.get("word", "")),
+                        start=float(word.get("start", 0)),
+                        end=float(word.get("end", 0)),
+                    )
+                    for word in item.get("word_timings", [])
+                    if isinstance(word, dict)
+                ],
             )
         )
 

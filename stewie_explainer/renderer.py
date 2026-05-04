@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .models import DialogueTurn
 from .models import ExplainerScript
+from .models import WordTiming
 
 
 class VideoRenderer:
@@ -57,9 +58,8 @@ class MoviePyReelRenderer(VideoRenderer):
 
                 subtitle_clips.extend(
                     _word_by_word_subtitles(
-                        timed_turn.turn.text,
+                        timed_turn.turn.word_timings,
                         timed_turn.start,
-                        timed_turn.duration,
                         background.w,
                         background.h,
                     )
@@ -166,34 +166,31 @@ def _character_height(frame_height: int) -> int:
 
 
 def _word_by_word_subtitles(
-    text: str,
+    word_timings: list[WordTiming],
     start_time: float,
-    duration: float,
     frame_width: int,
     frame_height: int,
 ) -> list:
-    words = [word for word in text.split() if word]
-    if not words:
-        return []
+    if not word_timings:
+        raise ValueError("Cannot render subtitles without word timings")
 
     from moviepy import ImageClip, vfx
 
-    word_duration = max(duration / len(words), 0.08)
     clips = []
-    current = start_time
-    for word in words:
+    for word_timing in word_timings:
+        clip_start = start_time + word_timing.start
+        clip_duration = max(word_timing.end - word_timing.start, 0.08)
         image = _subtitle_image(
-            word.upper(),
-            _subtitle_font_size(frame_width, frame_height, word),
+            word_timing.word.upper(),
+            _subtitle_font_size(frame_width, frame_height, word_timing.word),
         )
         clips.append(
             ImageClip(image)
-            .with_start(current)
-            .with_duration(word_duration)
+            .with_start(clip_start)
+            .with_duration(clip_duration)
             .with_position(("center", int(frame_height * 0.44)))
             .with_effects([vfx.FadeIn(0.05), vfx.FadeOut(0.05)])
         )
-        current += word_duration
     return clips
 
 
