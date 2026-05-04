@@ -39,11 +39,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--background",
-        type=Path,
+        type=str,
         default=None,
         help=(
-            "Background gameplay/reel video to render behind the characters. "
-            "Defaults to a random video from video_assets/backgrounds/."
+            "Background gameplay/reel video path or YouTube URL to render behind the characters. "
+            "YouTube videos are downloaded to video_assets/backgrounds/. "
+            "Defaults to a random local video from video_assets/backgrounds/."
         ),
     )
     parser.add_argument(

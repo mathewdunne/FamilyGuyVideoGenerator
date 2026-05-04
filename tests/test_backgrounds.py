@@ -5,6 +5,7 @@ from pathlib import Path
 
 from stewie_explainer.backgrounds import (
     choose_random_background,
+    is_youtube_url,
     list_background_videos,
     resolve_background,
 )
@@ -41,6 +42,40 @@ class BackgroundTests(unittest.TestCase):
         explicit = Path("custom.mp4")
 
         self.assertEqual(resolve_background(explicit, Path("missing")), explicit)
+
+    def test_detects_youtube_urls(self) -> None:
+        self.assertTrue(is_youtube_url("https://www.youtube.com/watch?v=abc123"))
+        self.assertTrue(is_youtube_url("https://youtu.be/abc123"))
+        self.assertFalse(is_youtube_url("https://example.com/video.mp4"))
+        self.assertFalse(is_youtube_url("video_assets/backgrounds/demo.mp4"))
+
+    def test_resolve_background_downloads_youtube_url_to_backgrounds_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            backgrounds_dir = Path(tmp)
+            downloaded = backgrounds_dir / "downloaded.mp4"
+            calls = []
+
+            def fake_downloader(url: str, target_dir: Path) -> Path:
+                calls.append((url, target_dir))
+                return downloaded
+
+            result = resolve_background(
+                "https://www.youtube.com/watch?v=abc123",
+                backgrounds_dir,
+                youtube_downloader=fake_downloader,
+            )
+
+            self.assertEqual(result, downloaded)
+            self.assertEqual(
+                calls,
+                [("https://www.youtube.com/watch?v=abc123", backgrounds_dir)],
+            )
+
+    def test_resolve_background_keeps_local_path_string(self) -> None:
+        self.assertEqual(
+            resolve_background("video_assets/backgrounds/demo.mp4", Path("missing")),
+            Path("video_assets/backgrounds/demo.mp4"),
+        )
 
 
 if __name__ == "__main__":
