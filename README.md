@@ -80,7 +80,7 @@ python flow_main.py `
   --background "path\to\vertical_gameplay.mp4"
 ```
 
-You can also pass a YouTube URL as the background. The CLI downloads it to `video_assets/backgrounds/` with `pytube`, then renders from that local file:
+You can also pass a YouTube URL as the background. The CLI downloads it to `video_assets/backgrounds/` with `yt-dlp`, then renders from that local file:
 
 ```powershell
 python flow_main.py `

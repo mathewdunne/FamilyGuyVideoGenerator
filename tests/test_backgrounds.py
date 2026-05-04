@@ -1,10 +1,14 @@
 import random
+import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from stewie_explainer.backgrounds import (
     choose_random_background,
+    download_youtube_background,
     is_youtube_url,
     list_background_videos,
     resolve_background,
@@ -76,6 +80,43 @@ class BackgroundTests(unittest.TestCase):
             resolve_background("video_assets/backgrounds/demo.mp4", Path("missing")),
             Path("video_assets/backgrounds/demo.mp4"),
         )
+
+    def test_download_youtube_background_prefers_video_only_formats(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            downloaded = Path(tmp) / "downloaded.mp4"
+            captured_options = {}
+
+            class FakeYoutubeDL:
+                def __init__(self, options: dict) -> None:
+                    captured_options.update(options)
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, traceback) -> None:
+                    return None
+
+                def extract_info(self, url: str, download: bool) -> dict:
+                    downloaded.write_bytes(b"video")
+                    for hook in captured_options["progress_hooks"]:
+                        hook({"status": "finished", "filename": str(downloaded)})
+                    return {"id": "abc123", "ext": "mp4"}
+
+                def prepare_filename(self, info: dict) -> str:
+                    return str(downloaded)
+
+            fake_yt_dlp = types.SimpleNamespace(YoutubeDL=FakeYoutubeDL)
+            with patch.dict(sys.modules, {"yt_dlp": fake_yt_dlp}):
+                result = download_youtube_background(
+                    "https://www.youtube.com/watch?v=abc123",
+                    Path(tmp),
+                )
+
+            self.assertEqual(result, downloaded)
+            self.assertEqual(
+                captured_options["format"],
+                "bestvideo[ext=mp4]/bestvideo/best[ext=mp4]/best",
+            )
 
 
 if __name__ == "__main__":

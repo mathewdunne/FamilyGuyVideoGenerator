@@ -53,27 +53,41 @@ def is_youtube_url(value: str) -> bool:
 
 def download_youtube_background(url: str, backgrounds_dir: Path = DEFAULT_BACKGROUNDS_DIR) -> Path:
     try:
-        from pytube import YouTube
+        import yt_dlp
     except ImportError as exc:
         raise RuntimeError(
-            "Downloading YouTube backgrounds requires pytube. "
+            "Downloading YouTube backgrounds requires yt-dlp. "
             "Install dependencies with: python -m pip install -r requirements.txt"
         ) from exc
 
     backgrounds_dir.mkdir(parents=True, exist_ok=True)
-    youtube = YouTube(url)
-    stream = (
-        youtube.streams.filter(progressive=True, file_extension="mp4")
-        .order_by("resolution")
-        .desc()
-        .first()
-    )
-    if stream is None:
-        raise ValueError(f"No progressive MP4 stream found for YouTube URL: {url}")
+    downloaded_paths: list[Path] = []
 
-    downloaded_path = Path(stream.download(output_path=str(backgrounds_dir)))
+    def remember_download(download: dict) -> None:
+        if download.get("status") == "finished" and download.get("filename"):
+            downloaded_paths.append(Path(download["filename"]))
+
+    options = {
+        "format": "bestvideo[ext=mp4]/bestvideo/best[ext=mp4]/best",
+        "noplaylist": True,
+        "outtmpl": str(backgrounds_dir / "%(title).200B [%(id)s].%(ext)s"),
+        "progress_hooks": [remember_download],
+        "quiet": True,
+        "no_warnings": True,
+    }
+    with yt_dlp.YoutubeDL(options) as downloader:
+        info = downloader.extract_info(url, download=True)
+        prepared_path = Path(downloader.prepare_filename(info))
+
+    if downloaded_paths:
+        downloaded_path = downloaded_paths[-1]
+    else:
+        downloaded_path = prepared_path
+
     if downloaded_path.suffix.lower() not in VIDEO_EXTENSIONS:
         raise ValueError(f"Downloaded background is not a supported video file: {downloaded_path}")
+    if not downloaded_path.exists():
+        raise FileNotFoundError(f"Downloaded background file was not created: {downloaded_path}")
     return downloaded_path
 
 
