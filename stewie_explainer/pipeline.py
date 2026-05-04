@@ -50,7 +50,7 @@ def run_generation(
     if article is not None:
         report(f"Extracted {len(article.text)} characters from article")
 
-    report("Generating Peter/Stewie script with Claude")
+    report("Generating Peter/Stewie script")
     script = transcript_generator.generate(prompt=prompt, article=article)
     report(f"Script generated: {script.title} ({len(script.turns)} turns)")
 

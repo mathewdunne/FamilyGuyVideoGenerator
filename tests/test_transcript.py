@@ -1,8 +1,29 @@
 import json
 import unittest
+from unittest.mock import patch
 
 from stewie_explainer.article import ArticleSource
-from stewie_explainer.transcript import ClaudeCliTranscriptGenerator, build_user_prompt, parse_claude_output
+from stewie_explainer.transcript import (
+    DEFAULT_OPENROUTER_MODEL,
+    ClaudeCliTranscriptGenerator,
+    OpenRouterTranscriptGenerator,
+    build_user_prompt,
+    parse_claude_output,
+)
+
+
+class FakeResponse:
+    def __init__(self, payload: dict) -> None:
+        self.payload = payload
+
+    def __enter__(self) -> "FakeResponse":
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return json.dumps(self.payload).encode("utf-8")
 
 
 def valid_script_payload() -> dict:
@@ -76,6 +97,43 @@ class TranscriptTests(unittest.TestCase):
         self.assertIn("Encoders measure rotation.", prompt)
         self.assertIn("Return exactly one JSON object", prompt)
         self.assertIn("JSON schema:", prompt)
+
+    def test_user_prompt_guides_stewie_question_and_plain_peter_answer(self) -> None:
+        prompt = build_user_prompt("Explain PID control.", None)
+
+        self.assertIn('The first turn must have speaker "stewie".', prompt)
+        self.assertIn('The first line must start with "Peter, " and end with "?".', prompt)
+        self.assertIn("Peter should answer without technical jargon", prompt)
+        self.assertIn("FRC student could reasonably ask", prompt)
+
+    def test_openrouter_generator_posts_chat_request_and_parses_message_content(self) -> None:
+        response_payload = {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(valid_script_payload()),
+                    }
+                }
+            ]
+        }
+        generator = OpenRouterTranscriptGenerator(api_key="test-key")
+
+        with patch(
+            "stewie_explainer.transcript.urlopen",
+            return_value=FakeResponse(response_payload),
+        ) as mocked_urlopen:
+            script = generator.generate("Explain PID.")
+
+        request = mocked_urlopen.call_args.args[0]
+        body = json.loads(request.data.decode("utf-8"))
+
+        self.assertEqual(script.title, "Swerve Drive PID")
+        self.assertEqual(request.full_url, "https://openrouter.ai/api/v1/chat/completions")
+        self.assertEqual(request.get_header("Authorization"), "Bearer test-key")
+        self.assertEqual(body["model"], DEFAULT_OPENROUTER_MODEL)
+        self.assertEqual(body["response_format"], {"type": "json_object"})
+        self.assertEqual(body["messages"][0]["role"], "system")
+        self.assertEqual(body["messages"][1]["role"], "user")
 
     def test_claude_command_uses_bare_text_json_only_mode(self) -> None:
         generator = ClaudeCliTranscriptGenerator()

@@ -5,7 +5,7 @@ Generate short Peter/Stewie-style explainer reels for FRC and coding topics.
 The local workflow is:
 
 1. Run the CLI with a topic prompt and, optionally, an article URL.
-2. Claude CLI generates a structured 40-60 second dialogue script.
+2. OpenRouter generates a structured 40-60 second dialogue script.
 3. Fish Audio generates one MP3 per dialogue turn.
 4. MoviePy assembles the background video, character images, audio, and word-by-word captions.
 5. The final MP4 and review artifacts are saved together in one output folder.
@@ -13,7 +13,8 @@ The local workflow is:
 ## Requirements
 
 - Python 3.11+
-- Claude CLI
+- OpenRouter API key
+- Claude CLI, only if using `--script-provider claude_cli`
 - FFmpeg on PATH
 - ImageMagick usable by MoviePy `TextClip`
 - Fish Audio API key and voice IDs
@@ -26,14 +27,20 @@ python -m pip install -r requirements.txt
 
 ## Configuration
 
-Copy `.env.template` to `.env` and fill in your Fish Audio values:
+Copy `.env.template` or `.env.sample` to `.env` and fill in your OpenRouter and Fish Audio values:
 
 ```text
+OPENROUTER_API_KEY=your_openrouter_key_here
+OPENROUTER_MODEL=anthropic/claude-haiku-4.5
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+
 FISH_AUDIO_API_KEY=your_key_here
 FISH_AUDIO_PETER_VOICE_ID=your_peter_voice_id
 FISH_AUDIO_STEWIE_VOICE_ID=your_stewie_voice_id
 FISH_AUDIO_MODEL=s2-pro
 ```
+
+OpenRouter is the default script generator. The default model is `anthropic/claude-haiku-4.5`.
 
 `FISH_API_KEY` is also accepted as an alias for `FISH_AUDIO_API_KEY`.
 
@@ -55,6 +62,15 @@ python flow_main.py `
 ```
 
 `--out` defaults to `outputs`, so it can be omitted. If `--background` is omitted, the CLI picks a random video from `video_assets/backgrounds/`.
+
+To use Claude CLI instead of OpenRouter for script generation:
+
+```powershell
+python flow_main.py `
+  --script-provider claude_cli `
+  --claude-model haiku `
+  --prompt "Explain PID control for an FRC swerve module"
+```
 
 You can still override the background explicitly:
 
@@ -79,8 +95,8 @@ The output folder is named from the generated topic slug:
 outputs/
   swerve_drive_pid/
     audio/
-      01_peter.mp3
-      02_stewie.mp3
+      01_stewie.mp3
+      02_peter.mp3
     swerve_drive_pid_prompt.md
     swerve_drive_pid_script.json
     swerve_drive_pid_script.md

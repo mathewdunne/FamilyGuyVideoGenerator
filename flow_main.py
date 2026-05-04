@@ -8,7 +8,12 @@ from stewie_explainer.backgrounds import DEFAULT_BACKGROUNDS_DIR, resolve_backgr
 from stewie_explainer.pipeline import run_generation, run_render_only
 from stewie_explainer.renderer import MoviePyReelRenderer
 from stewie_explainer.subtitles import WhisperXSubtitleAligner
-from stewie_explainer.transcript import ClaudeCliTranscriptGenerator
+from stewie_explainer.transcript import (
+    DEFAULT_OPENROUTER_MODEL,
+    ClaudeCliTranscriptGenerator,
+    OpenRouterTranscriptGenerator,
+    TranscriptGenerator,
+)
 from stewie_explainer.tts import create_tts_provider
 
 
@@ -59,9 +64,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="TTS provider to use. Currently supported: fish_audio.",
     )
     parser.add_argument(
+        "--script-provider",
+        default="openrouter",
+        choices=["openrouter", "claude_cli"],
+        help="Script generator to use. Default: openrouter.",
+    )
+    parser.add_argument(
+        "--openrouter-model",
+        default=None,
+        help=(
+            "OpenRouter model for script generation. "
+            f"Defaults to OPENROUTER_MODEL or {DEFAULT_OPENROUTER_MODEL}."
+        ),
+    )
+    parser.add_argument(
         "--claude-model",
         default="haiku",
-        help="Claude CLI model alias/name for script generation.",
+        help="Claude CLI model alias/name for script generation when --script-provider claude_cli.",
     )
     parser.add_argument(
         "--whisperx-model",
@@ -98,6 +117,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show full Python tracebacks instead of concise errors.",
     )
     return parser
+
+
+def create_transcript_generator(args: argparse.Namespace) -> TranscriptGenerator:
+    if args.script_provider == "openrouter":
+        return OpenRouterTranscriptGenerator.from_env(model=args.openrouter_model)
+    if args.script_provider == "claude_cli":
+        return ClaudeCliTranscriptGenerator(model=args.claude_model)
+    raise ValueError(f"Unsupported script provider: {args.script_provider}")
 
 
 def main() -> int:
@@ -137,8 +164,11 @@ def main() -> int:
             return 0
 
         status(f"Using output directory: {args.out}")
-        transcript_generator = ClaudeCliTranscriptGenerator(model=args.claude_model)
-        status(f"Using Claude model: {args.claude_model}")
+        transcript_generator = create_transcript_generator(args)
+        if isinstance(transcript_generator, OpenRouterTranscriptGenerator):
+            status(f"Using OpenRouter model: {transcript_generator.model}")
+        else:
+            status(f"Using Claude CLI model: {args.claude_model}")
 
         status(f"Configuring TTS provider: {args.tts}")
         tts_provider = create_tts_provider(args.tts)
